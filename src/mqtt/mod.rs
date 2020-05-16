@@ -5,6 +5,7 @@ use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 
 pub(super) async fn listen(opts: Opts) {
+    info!("starting listener...");
     let (mut requests_tx, requests_rx) = mpsc::channel(100);
     let mut mqtt_options = MqttOptions::new("master", opts.mqtt_url, 1883);
     mqtt_options
