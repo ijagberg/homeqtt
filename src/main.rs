@@ -12,8 +12,10 @@ struct Opts {
     mqtt_url: String,
 }
 
-fn main() {
+#[tokio::main(basic_scheduler)]
+async fn main() {
     dotenv::dotenv().ok();
     pretty_env_logger::init();
     let opts = Opts::from_args();
+    mqtt::listen(opts).await
 }

@@ -1,5 +1,5 @@
 use super::Opts;
-use rumq_client::{self, MqttEventLoop, MqttOptions, Notification, QoS, Request, Subscribe};
+use rumq_client::{self, MqttOptions, Notification, QoS, Request, Subscribe};
 use std::time;
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
