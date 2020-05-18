@@ -1,6 +1,7 @@
 use super::Opts;
-use rumq_client::{self, MqttOptions, Notification, QoS, Request, Subscribe};
-use std::time;
+use chrono::prelude::*;
+use rumq_client::{self, MqttOptions, Notification, Publish, QoS, Request, Subscribe};
+use std::{convert::TryFrom, fmt::Display, time};
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 
@@ -36,12 +37,64 @@ pub(super) async fn listen(opts: Opts) {
 
         while let Some(notification) = stream.next().await {
             match notification {
-                Notification::Publish(publish) => info!(
-                    "received publish notification: '{}'",
-                    String::from_utf8(publish.payload).unwrap()
-                ),
+                Notification::Publish(publish) => handle_publish(publish),
                 _ => (),
             }
         }
     }
+}
+
+fn handle_publish(publish: Publish) {
+    match Message::try_from(publish) {
+        Ok(Message::LogTheTime(data)) => info!(
+            "{} wants to log current time: '{}'",
+            data.id,
+            Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+        ),
+        Err(error) => error!("error handling notification: '{}'", error),
+    }
+}
+
+enum Message {
+    LogTheTime(LogTheTime),
+}
+
+impl Display for MessageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::UnsupportedTopic(topic) => format!("unsupported topic: '{}'", topic),
+                Self::InvalidUtf8 => "invalid utf8".to_string(),
+                Self::InvalidPayload => "invalid payload".to_string(),
+            }
+        )
+    }
+}
+
+impl TryFrom<Publish> for Message {
+    type Error = MessageError;
+    fn try_from(value: Publish) -> Result<Self, Self::Error> {
+        Ok(match value.topic_name.as_ref() {
+            "log/time" => Self::LogTheTime(
+                serde_json::from_str(
+                    &String::from_utf8(value.payload).map_err(|_| Self::Error::InvalidUtf8)?,
+                )
+                .map_err(|_| Self::Error::InvalidPayload)?,
+            ),
+            invalid => Err(Self::Error::UnsupportedTopic(invalid.to_owned()))?,
+        })
+    }
+}
+
+enum MessageError {
+    UnsupportedTopic(String),
+    InvalidUtf8,
+    InvalidPayload,
+}
+
+#[derive(serde::Deserialize)]
+struct LogTheTime {
+    id: String,
 }
