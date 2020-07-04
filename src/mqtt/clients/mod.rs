@@ -81,7 +81,7 @@ impl Worker {
             client
                 .publish(
                     format!("homeqtt/heartbeats/{}", self.client_info.id),
-                    QoS::AtMostOnce,
+                    QoS::AtLeastOnce,
                     false,
                     serde_json::to_string(&self.client_info).unwrap().as_bytes(),
                 )
