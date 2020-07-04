@@ -37,8 +37,13 @@ impl Main {
             tokio::time::delay_for(time::Duration::from_secs(5)).await;
 
             // subscribe to all relevant topics
-            let sub_request = Subscribe::new(LOG_THE_TIME_TOPIC, QoS::AtLeastOnce);
-            if let Err(err) = self.tx.send(Request::Subscribe(sub_request)).await {
+            let log_time_sub = Subscribe::new(LOG_THE_TIME_TOPIC, QoS::AtLeastOnce);
+            if let Err(err) = self.tx.send(Request::Subscribe(log_time_sub)).await {
+                error!("failed to subscribe: '{}'", err);
+                continue;
+            }
+            let heartbeat_sub = Subscribe::new(super::HEARTBEAT_TOPICS, QoS::AtLeastOnce);
+            if let Err(err) = self.tx.send(Request::Subscribe(heartbeat_sub)).await {
                 error!("failed to subscribe: '{}'", err);
                 continue;
             }
@@ -102,7 +107,7 @@ impl Worker {
     }
 
     pub async fn run(mut self) {
-        loop {
+        'connection: loop {
             info!("sleeping for 5 seconds before connecting...");
             tokio::time::delay_for(time::Duration::from_secs(5)).await;
 
@@ -113,21 +118,24 @@ impl Worker {
                     continue;
                 }
             };
-
-            info!("sending heartbeat...");
-            if let Err(e) = self
-                .tx
-                .send(Request::Publish(Publish::new(
-                    format!("homeqtt/heartbeats/{}", self.client_info.id),
-                    QoS::AtLeastOnce,
-                    serde_json::to_string(&self.client_info).unwrap().as_bytes(),
-                )))
-                .await
-            {
-                error!("failed to publish heartbeat: '{}'", e);
+            info!("connected");
+            loop {
+                info!("sending heartbeat...");
+                if let Err(e) = self
+                    .tx
+                    .send(Request::Publish(Publish::new(
+                        format!("homeqtt/heartbeats/{}", self.client_info.id),
+                        QoS::AtLeastOnce,
+                        serde_json::to_string(&self.client_info).unwrap().as_bytes(),
+                    )))
+                    .await
+                {
+                    error!("failed to publish heartbeat: '{}'", e);
+                    continue 'connection;
+                }
+                info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
+                tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
             }
-            info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
-            tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
         }
     }
 }
