@@ -56,6 +56,18 @@ impl Main {
                 }
             };
 
+            loop {
+                self.tx
+                    .send(Request::Publish(Publish::new(
+                        "homeqtt/test",
+                        QoS::AtLeastOnce,
+                        "tjena",
+                    )))
+                    .await
+                    .unwrap();
+                tokio::time::delay_for(Duration::from_secs(1)).await;
+            }
+
             info!("connected");
 
             while let Some(notification) = stream.next().await {
