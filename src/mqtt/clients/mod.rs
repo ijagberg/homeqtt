@@ -20,7 +20,7 @@ impl Main {
         }
     }
 
-    pub async fn run(self) {
+    pub fn run(self) {
         let (mut client, mut connection) = Client::new(self.mqtt_opts, 10);
         client
             .subscribe(super::LOG_THE_TIME_TOPIC, QoS::AtMostOnce)
