@@ -70,7 +70,7 @@ impl Worker {
         }
     }
 
-    pub async fn run(self) {
+    pub fn run(self) {
         let (mut client, _connection) = Client::new(self.mqtt_opts, 10);
 
         loop {
@@ -84,7 +84,7 @@ impl Worker {
                 )
                 .unwrap();
             info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
-            tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
+            std::thread::sleep(Duration::from_millis(self.opts.heartbeat_timer_ms));
         }
     }
 }

@@ -23,8 +23,7 @@ enum Client {
     Worker(WorkerOpts),
 }
 
-#[tokio::main(basic_scheduler)]
-async fn main() {
+ fn main() {
     dotenv::dotenv().ok();
     pretty_env_logger::init();
     let opts = Opts::from_args();
@@ -40,7 +39,7 @@ async fn main() {
                 .set_max_packet_size(100_000);
 
             let client = mqtt::clients::Main::new(client_info, mqtt_options);
-            client.run().await;
+            client.run();
         }
         Client::Worker(worker_opts) => {
             let client_info = ClientInfo::new(String::from("worker"));
@@ -51,7 +50,7 @@ async fn main() {
                 .set_clean_session(true)
                 .set_max_packet_size(100_000);
             let client = mqtt::clients::Worker::new(client_info, worker_opts, mqtt_options);
-            client.run().await;
+            client.run();
         }
     }
 }
