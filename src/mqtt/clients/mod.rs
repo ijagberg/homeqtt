@@ -29,6 +29,9 @@ impl Main {
             trace!("notification: '{:?}'", notification);
             if let Ok((Some(Incoming::Publish(p)), _)) = notification {
                 Main::handle_publish(p);
+                client
+                    .publish("homeqtt/main", QoS::AtLeastOnce, false, "hello".as_bytes())
+                    .unwrap();
             }
         }
     }
