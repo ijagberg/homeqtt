@@ -4,7 +4,7 @@ use super::{ClientInfo, Message};
 use crate::WorkerOpts;
 use chrono::prelude::*;
 use rumqttc::{Client, Incoming, MqttOptions, Publish, QoS};
-use std::{convert::TryFrom};
+use std::convert::TryFrom;
 
 pub(crate) struct Main {
     #[allow(unused)]
@@ -22,18 +22,21 @@ impl Main {
 
     pub fn run(self) {
         let (mut client, mut connection) = Client::new(self.mqtt_opts, 10);
-        client
-            .subscribe(super::LOG_THE_TIME_TOPIC, QoS::AtMostOnce)
-            .unwrap();
-        client
-            .subscribe(super::HEARTBEAT_TOPICS, QoS::AtMostOnce)
-            .unwrap();
+        Main::subscribe(&mut client, super::LOG_THE_TIME_TOPIC);
+        Main::subscribe(&mut client, super::HEARTBEAT_TOPICS);
 
-        // Iterate to poll the eventloop for connection progress
         for (_i, notification) in connection.iter().enumerate() {
+            trace!("notification: '{:?}'", notification);
             if let Ok((Some(Incoming::Publish(p)), _)) = notification {
                 Main::handle_publish(p);
             }
+        }
+    }
+
+    fn subscribe(client: &mut Client, topic: &str) {
+        info!("subscribing to '{}'", topic);
+        if let Err(e) = client.subscribe(topic, QoS::AtMostOnce) {
+            error!("failed to subscribe to '{}': '{}'", topic, e);
         }
     }
 
