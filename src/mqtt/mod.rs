@@ -1,6 +1,5 @@
 pub(crate) mod clients;
 
-use super::Opts;
 use rumq_client::{self, Publish};
 use std::{convert::TryFrom, fmt::Display};
 
@@ -71,6 +70,16 @@ struct LogTheTime {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-struct ClientInfo {
+pub(crate) struct ClientInfo {
     id: String,
+}
+
+impl ClientInfo {
+    pub(crate) fn new(id: String) -> Self {
+        Self { id }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
 }

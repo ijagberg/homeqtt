@@ -1,6 +1,7 @@
 mod mqtt;
 
 use dotenv;
+use mqtt::ClientInfo;
 use rumq_client::MqttOptions;
 use std::time;
 use structopt::StructOpt;
@@ -31,9 +32,9 @@ async fn main() {
 
     match opts.client {
         Client::Main => {
-            let id = String::from("main");
+            let client_info = ClientInfo::new(String::from("worker"));
             let (tx, rx) = mpsc::channel(100);
-            let mut mqtt_options = MqttOptions::new(&id, opts.mqtt_url, 1883);
+            let mut mqtt_options = MqttOptions::new(client_info.id(), opts.mqtt_url, 1883);
             mqtt_options
                 .set_keep_alive(5)
                 .set_throttle(time::Duration::from_secs(1))
@@ -41,20 +42,20 @@ async fn main() {
                 .set_max_packet_size(100_000);
             let eventloop = rumq_client::eventloop(mqtt_options, rx);
 
-            let client = mqtt::clients::Main::new(id, tx, eventloop);
+            let client = mqtt::clients::Main::new(client_info, tx, eventloop);
             client.run().await;
         }
         Client::Worker(worker_opts) => {
-            let id = String::from("worker");
+            let client_info = ClientInfo::new(String::from("worker"));
             let (tx, rx) = mpsc::channel(100);
-            let mut mqtt_options = MqttOptions::new(&id, opts.mqtt_url, 1883);
+            let mut mqtt_options = MqttOptions::new(client_info.id(), opts.mqtt_url, 1883);
             mqtt_options
                 .set_keep_alive(5)
                 .set_throttle(time::Duration::from_secs(1))
                 .set_clean_session(true)
                 .set_max_packet_size(100_000);
             let eventloop = rumq_client::eventloop(mqtt_options, rx);
-            let client = mqtt::clients::Worker::new(id, worker_opts, tx, eventloop);
+            let client = mqtt::clients::Worker::new(client_info, worker_opts, tx, eventloop);
             client.run().await;
         }
     }

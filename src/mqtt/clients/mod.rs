@@ -10,14 +10,23 @@ use std::{convert::TryFrom, time};
 use tokio::stream::StreamExt;
 
 pub(crate) struct Main {
-    id: String,
+    #[allow(unused)]
+    client_info: ClientInfo,
     tx: Sender<Request>,
     eventloop: MqttEventLoop,
 }
 
 impl Main {
-    pub(crate) fn new(id: String, tx: Sender<Request>, eventloop: MqttEventLoop) -> Self {
-        Self { id, tx, eventloop }
+    pub(crate) fn new(
+        client_info: ClientInfo,
+        tx: Sender<Request>,
+        eventloop: MqttEventLoop,
+    ) -> Self {
+        Self {
+            client_info,
+            tx,
+            eventloop,
+        }
     }
 
     pub async fn run(mut self) {
@@ -71,7 +80,7 @@ impl Main {
 }
 
 pub(crate) struct Worker {
-    id: String,
+    client_info: ClientInfo,
     opts: WorkerOpts,
     tx: Sender<Request>,
     eventloop: MqttEventLoop,
@@ -79,13 +88,13 @@ pub(crate) struct Worker {
 
 impl Worker {
     pub(crate) fn new(
-        id: String,
+        client_info: ClientInfo,
         opts: WorkerOpts,
         tx: Sender<Request>,
         eventloop: MqttEventLoop,
     ) -> Self {
         Self {
-            id,
+            client_info,
             opts,
             tx,
             eventloop,
@@ -94,14 +103,24 @@ impl Worker {
 
     pub async fn run(mut self) {
         loop {
+            info!("sleeping for 5 seconds before connecting...");
+            tokio::time::delay_for(time::Duration::from_secs(5)).await;
+
+            let _stream = match self.eventloop.connect().await {
+                Ok(stream) => stream,
+                Err(err) => {
+                    error!("failed to connect to event loop: '{}'", err);
+                    continue;
+                }
+            };
+
             info!("sending heartbeat...");
-            let client_info = self.client_info();
             if let Err(e) = self
                 .tx
                 .send(Request::Publish(Publish::new(
-                    format!("homeqtt/heartbeats/{}", self.id),
+                    format!("homeqtt/heartbeats/{}", self.client_info.id),
                     QoS::AtLeastOnce,
-                    serde_json::to_string(&client_info).unwrap().as_bytes(),
+                    serde_json::to_string(&self.client_info).unwrap().as_bytes(),
                 )))
                 .await
             {
@@ -109,12 +128,6 @@ impl Worker {
             }
             info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
             tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
-        }
-    }
-
-    fn client_info(&self) -> ClientInfo {
-        ClientInfo {
-            id: self.id.to_owned(),
         }
     }
 }
