@@ -29,9 +29,6 @@ impl Main {
             trace!("notification: '{:?}'", notification);
             if let Ok((Some(Incoming::Publish(p)), _)) = notification {
                 Main::handle_publish(p);
-                client
-                    .publish("homeqtt/main", QoS::AtLeastOnce, false, "hello".as_bytes())
-                    .unwrap();
             }
         }
     }
@@ -77,7 +74,7 @@ impl Worker {
     }
 
     pub fn run(self) {
-        let (mut client, _connection) = Client::new(self.mqtt_opts, 10);
+        let (mut client, mut connection) = Client::new(self.mqtt_opts, 10);
 
         loop {
             info!("sending heartbeat...");
@@ -89,6 +86,9 @@ impl Worker {
                     serde_json::to_string(&self.client_info).unwrap().as_bytes(),
                 )
                 .unwrap();
+            if let Some(Err(e)) = connection.iter().next() {
+                error!("connection error: '{:?}'", e);
+            }
             info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
             std::thread::sleep(Duration::from_millis(self.opts.heartbeat_timer_ms));
         }
