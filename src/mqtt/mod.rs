@@ -1,6 +1,6 @@
 pub(crate) mod clients;
 
-use rumq_client::{self, Publish};
+use rumqttc::Publish;
 use std::{convert::TryFrom, fmt::Display};
 
 pub const LOG_THE_TIME_TOPIC: &str = "homeqtt/log/time";
@@ -30,8 +30,8 @@ impl Display for MessageError {
 impl TryFrom<Publish> for Message {
     type Error = MessageError;
     fn try_from(value: Publish) -> Result<Self, Self::Error> {
-        let topic = value.topic_name.to_owned();
-        let utf8_payload = String::from_utf8(value.payload)
+        let topic = value.topic.to_owned();
+        let utf8_payload = String::from_utf8(value.payload.to_vec())
             .map_err(|_| Self::Error::new(topic.clone(), MessageErrorKind::InvalidUtf8))?;
         Ok(match topic.as_ref() {
             LOG_THE_TIME_TOPIC => Message::LogTheTime(

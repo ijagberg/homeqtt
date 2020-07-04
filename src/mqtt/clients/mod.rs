@@ -1,83 +1,42 @@
-use super::{ClientInfo, LOG_THE_TIME_TOPIC};
-use rumq_client::{MqttEventLoop, Notification, Publish, QoS, Request, Subscribe};
 use std::time::Duration;
-use tokio::sync::mpsc::Sender;
 
-use super::Message;
+use super::{ClientInfo, Message};
 use crate::WorkerOpts;
 use chrono::prelude::*;
-use std::{convert::TryFrom, time};
-use tokio::stream::StreamExt;
+use rumqttc::{Client, Incoming, MqttOptions, Publish, QoS};
+use std::{convert::TryFrom};
 
 pub(crate) struct Main {
     #[allow(unused)]
     client_info: ClientInfo,
-    tx: Sender<Request>,
-    eventloop: MqttEventLoop,
+    mqtt_opts: MqttOptions,
 }
 
 impl Main {
-    pub(crate) fn new(
-        client_info: ClientInfo,
-        tx: Sender<Request>,
-        eventloop: MqttEventLoop,
-    ) -> Self {
+    pub(crate) fn new(client_info: ClientInfo, mqtt_opts: MqttOptions) -> Self {
         Self {
             client_info,
-            tx,
-            eventloop,
+            mqtt_opts,
         }
     }
 
-    pub async fn run(mut self) {
-        info!("starting listener...");
-        // main listener loop
-        loop {
-            info!("sleeping for 5 seconds before connecting...");
-            tokio::time::delay_for(time::Duration::from_secs(5)).await;
+    pub async fn run(self) {
+        let (mut client, mut connection) = Client::new(self.mqtt_opts, 10);
+        client
+            .subscribe(super::LOG_THE_TIME_TOPIC, QoS::AtMostOnce)
+            .unwrap();
+        client
+            .subscribe(super::HEARTBEAT_TOPICS, QoS::AtMostOnce)
+            .unwrap();
 
-            // subscribe to all relevant topics
-            let log_time_sub = Subscribe::new(LOG_THE_TIME_TOPIC, QoS::AtLeastOnce);
-            if let Err(err) = self.tx.send(Request::Subscribe(log_time_sub)).await {
-                error!("failed to subscribe: '{}'", err);
-                continue;
-            }
-            let heartbeat_sub = Subscribe::new(super::HEARTBEAT_TOPICS, QoS::AtLeastOnce);
-            if let Err(err) = self.tx.send(Request::Subscribe(heartbeat_sub)).await {
-                error!("failed to subscribe: '{}'", err);
-                continue;
-            }
-
-            let mut stream = match self.eventloop.connect().await {
-                Ok(stream) => stream,
-                Err(err) => {
-                    error!("failed to connect to event loop: '{}'", err);
-                    continue;
-                }
-            };
-
-            loop {
-                self.tx
-                    .send(Request::Publish(Publish::new(
-                        "homeqtt/test",
-                        QoS::AtLeastOnce,
-                        "tjena",
-                    )))
-                    .await
-                    .unwrap();
-                tokio::time::delay_for(Duration::from_secs(1)).await;
-            }
-
-            info!("connected");
-
-            while let Some(notification) = stream.next().await {
-                match notification {
-                    Notification::Publish(publish) => Main::handle_publish(publish),
-                    _ => (),
-                }
+        // Iterate to poll the eventloop for connection progress
+        for (_i, notification) in connection.iter().enumerate() {
+            if let Ok((Some(Incoming::Publish(p)), _)) = notification {
+                Main::handle_publish(p);
             }
         }
     }
+
     fn handle_publish(publish: Publish) {
         let now = chrono::Utc::now();
         match Message::try_from(publish) {
@@ -99,55 +58,33 @@ impl Main {
 pub(crate) struct Worker {
     client_info: ClientInfo,
     opts: WorkerOpts,
-    tx: Sender<Request>,
-    eventloop: MqttEventLoop,
+    mqtt_opts: MqttOptions,
 }
 
 impl Worker {
-    pub(crate) fn new(
-        client_info: ClientInfo,
-        opts: WorkerOpts,
-        tx: Sender<Request>,
-        eventloop: MqttEventLoop,
-    ) -> Self {
+    pub(crate) fn new(client_info: ClientInfo, opts: WorkerOpts, mqtt_opts: MqttOptions) -> Self {
         Self {
             client_info,
             opts,
-            tx,
-            eventloop,
+            mqtt_opts,
         }
     }
 
-    pub async fn run(mut self) {
-        'connection: loop {
-            info!("sleeping for 5 seconds before connecting...");
-            tokio::time::delay_for(time::Duration::from_secs(5)).await;
+    pub async fn run(self) {
+        let (mut client, _connection) = Client::new(self.mqtt_opts, 10);
 
-            let _stream = match self.eventloop.connect().await {
-                Ok(stream) => stream,
-                Err(err) => {
-                    error!("failed to connect to event loop: '{}'", err);
-                    continue;
-                }
-            };
-            info!("connected");
-            loop {
-                info!("sending heartbeat...");
-                if let Err(e) = self
-                    .tx
-                    .send(Request::Publish(Publish::new(
-                        format!("homeqtt/heartbeats/{}", self.client_info.id),
-                        QoS::AtLeastOnce,
-                        serde_json::to_string(&self.client_info).unwrap().as_bytes(),
-                    )))
-                    .await
-                {
-                    error!("failed to publish heartbeat: '{}'", e);
-                    continue 'connection;
-                }
-                info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
-                tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
-            }
+        loop {
+            info!("sending heartbeat...");
+            client
+                .publish(
+                    format!("homeqtt/heartbeats/{}", self.client_info.id),
+                    QoS::AtMostOnce,
+                    false,
+                    serde_json::to_string(&self.client_info).unwrap().as_bytes(),
+                )
+                .unwrap();
+            info!("sleeping for {}ms...", self.opts.heartbeat_timer_ms);
+            tokio::time::delay_for(Duration::from_millis(self.opts.heartbeat_timer_ms)).await;
         }
     }
 }
