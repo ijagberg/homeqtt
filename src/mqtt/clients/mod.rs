@@ -24,7 +24,7 @@ impl Main {
         info!("starting listener...");
         // main listener loop
         loop {
-            error!("sleeping for 5 seconds before connecting...");
+            info!("sleeping for 5 seconds before connecting...");
             tokio::time::delay_for(time::Duration::from_secs(5)).await;
 
             // subscribe to all relevant topics
@@ -41,6 +41,8 @@ impl Main {
                     continue;
                 }
             };
+
+            info!("connected");
 
             while let Some(notification) = stream.next().await {
                 match notification {

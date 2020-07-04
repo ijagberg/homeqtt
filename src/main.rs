@@ -62,6 +62,6 @@ async fn main() {
 
 #[derive(StructOpt)]
 struct WorkerOpts {
-    #[structopt(long, default_value = "10_000")]
+    #[structopt(long, default_value = "10000")]
     heartbeat_timer_ms: u64,
 }
