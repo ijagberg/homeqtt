@@ -19,7 +19,7 @@ pub(super) async fn listen(opts: Opts) {
     // main listener loop
     loop {
         // subscribe to all relevant topics
-        let sub_request = Subscribe::new("hello/world", QoS::AtLeastOnce);
+        let sub_request = Subscribe::new("log/time", QoS::AtLeastOnce);
         if let Err(err) = requests_tx.send(Request::Subscribe(sub_request)).await {
             error!("failed to subscribe: '{}'", err);
             error!("sleeping for 5 seconds before reconnecting...");
@@ -51,7 +51,7 @@ fn handle_publish(publish: Publish) {
             data.id,
             Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
         ),
-        Err(error) => error!("error handling notification: '{}'", error),
+        Err(error) => error!("error handling publish: '{}'", error),
     }
 }
 
@@ -64,10 +64,10 @@ impl Display for MessageError {
         write!(
             f,
             "{}",
-            match self {
-                Self::UnsupportedTopic(topic) => format!("unsupported topic: '{}'", topic),
-                Self::InvalidUtf8 => "invalid utf8".to_string(),
-                Self::InvalidPayload => "invalid payload".to_string(),
+            match self.kind {
+                MessageErrorKind::UnsupportedTopic => format!("unsupported topic: '{}'", self.topic),
+                MessageErrorKind::InvalidUtf8 => format!("invalid utf8 on topic: '{}'", self.topic),
+                MessageErrorKind::InvalidPayload => format!("invalid payload on topic: '{}'", self.topic),
             }
         )
     }
@@ -76,20 +76,34 @@ impl Display for MessageError {
 impl TryFrom<Publish> for Message {
     type Error = MessageError;
     fn try_from(value: Publish) -> Result<Self, Self::Error> {
-        Ok(match value.topic_name.as_ref() {
+        let topic = value.topic_name.to_owned();
+        Ok(match topic.as_ref() {
             "log/time" => Self::LogTheTime(
                 serde_json::from_str(
-                    &String::from_utf8(value.payload).map_err(|_| Self::Error::InvalidUtf8)?,
+                    &String::from_utf8(value.payload).map_err(|_| Self::Error::new(topic.clone(), MessageErrorKind::InvalidUtf8))?,
                 )
-                .map_err(|_| Self::Error::InvalidPayload)?,
+                .map_err(|_| Self::Error::new(topic, MessageErrorKind::InvalidPayload))?,
             ),
-            invalid => Err(Self::Error::UnsupportedTopic(invalid.to_owned()))?,
+            _invalid => Err(Self::Error::new(topic, MessageErrorKind::UnsupportedTopic))?,
         })
     }
 }
 
-enum MessageError {
-    UnsupportedTopic(String),
+struct MessageError{
+    topic: String,
+    kind: MessageErrorKind
+}
+
+impl MessageError{
+    pub fn new(topic: String, kind: MessageErrorKind) -> Self {
+        Self {
+            topic, kind
+        }
+    }
+}
+
+enum MessageErrorKind {
+    UnsupportedTopic,
     InvalidUtf8,
     InvalidPayload,
 }
